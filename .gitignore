@@ -1,4 +1,4 @@
-./build/
-./.gradle/
-./.idea/
-./kotlin-js-store/
+/build/
+/.gradle/
+/.idea/
+/kotlin-js-store/
