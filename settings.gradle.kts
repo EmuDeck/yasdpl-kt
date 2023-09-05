@@ -1,3 +1,3 @@
 
-rootProject.name = "usdpl-kt"
+rootProject.name = "yasdpl"
 
