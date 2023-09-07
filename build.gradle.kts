@@ -9,8 +9,8 @@ plugins {
 
 }
 
-group = "yasdpl"
-version = "1.0.2"
+group = "com.withertech.yasdpl"
+version = "2.0.0"
 
 repositories {
     mavenCentral()
@@ -58,7 +58,8 @@ kotlin {
 
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
 				implementation("io.ktor:ktor-serialization-kotlinx-json:$ktor_version")
-			}
+                implementation("io.github.oshai:kotlin-logging:5.1.0")
+            }
 	    }
 	    val commonTest by getting {
 		    dependencies {
@@ -70,7 +71,8 @@ kotlin {
 			    implementation("org.jetbrains.kotlin-wrappers:kotlin-react:18.2.0-pre.346")
 			    implementation("org.jetbrains.kotlin-wrappers:kotlin-react-dom:18.2.0-pre.346")
 			    implementation("org.jetbrains.kotlin-wrappers:kotlin-emotion:11.9.3-pre.346")
-			    implementation("io.ktor:ktor-client-js:$ktor_version")
+                implementation("io.ktor:ktor-client-websockets:$ktor_version")
+                implementation("io.ktor:ktor-client-js:$ktor_version")
                 implementation(npm("decky-frontend-lib", "^3.21.0"))
 
             }

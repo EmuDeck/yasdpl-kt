@@ -1,6 +1,8 @@
 package yasdpl
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.*
+import io.ktor.serialization.kotlinx.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.cio.*
@@ -12,9 +14,11 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.util.pipeline.*
-import kotlinx.atomicfu.atomic
+import io.ktor.websocket.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation as ServerContentNegotiation
 
@@ -57,12 +61,20 @@ val HttpHeaders.allHeaders
         XForwardedServer, XForwardedProto, XForwardedFor, XRequestId, XCorrelationId
     )
 
-class Yasdpl(port: Int) {
-    private val services = ServiceRegistry()
+abstract class WebsocketServer(port: Short = 31338) {
+    private val logger = KotlinLogging.logger("Backend")
+
+    private var closed = false
+
+    private val services = ServiceRegistry().apply { initServicesInternal() }
+
+    private val bindingQueue = mutableMapOf<String, Channel<QueueEntry>>()
 
     @Suppress("ExtractKtorModule")
-    private val engine: ApplicationEngine = embeddedServer(CIO, port = port) {
-        install(WebSockets)
+    private val engine: ApplicationEngine = embeddedServer(CIO, port = port.toInt()) {
+        install(WebSockets) {
+            contentConverter = KotlinxWebsocketSerializationConverter(Json)
+        }
         install(ServerContentNegotiation) {
             json(Json {
                 prettyPrint = true
@@ -76,104 +88,184 @@ class Yasdpl(port: Int) {
             allowHost("steamloopback.host", schemes = listOf("http", "https"))
         }
         routing {
-            post("/yasdpl/call") {
-                processBody()
+            webSocket("/{service}/{method}") {
+                val service = call.parameters["service"]
+                val method = call.parameters["method"]
+                if (service !== null && method !== null)
+                    this@WebsocketServer.services(service, method, this)
+                else
+                    throw IllegalStateException("service and method must not be null")
             }
         }
     }
 
 //    private val lastId = atomic(0)
 
-    private suspend fun PipelineContext<Unit, ApplicationCall>.processBody() {
-        val packet: Packet = call.receive()
-        val response = handleCall(packet)
-        call.respond(response)
-    }
-
-    private suspend fun PipelineContext<Unit, ApplicationCall>.handleCall(packet: Packet): Packet {
-        return when (packet) {
-            is Packet.Call -> {
-//                val lastId = lastId.value
-//                when {
-//                    lastId == 0 -> {
-//                        this@Yasdpl.lastId.value = packet.call.id
-//                    }
+//    private suspend fun PipelineContext<Unit, ApplicationCall>.processBody() {
+//        val packet: Packet = call.receive()
+//        val response = handleCall(packet)
+//        call.respond(response)
+//    }
 //
-//                    packet.call.id < MAX_ID_DIFFERENCE -> {
-//                        this@Yasdpl.lastId.value = packet.call.id
-//                    }
-//
-//                    packet.call.id > lastId && packet.call.id - lastId < MAX_ID_DIFFERENCE -> {
-//                        this@Yasdpl.lastId.value = packet.call.id
-//                    }
-//
-//                    packet.call.id < lastId && lastId - packet.call.id < MAX_ID_DIFFERENCE -> {
-//
-//                    }
-//
-//                    else -> {
-//                        println("Got USDPL call with strange ID! got:${packet.call.id} last id:${lastId} (in release mode this packet will be rejected)")
-//                    }
+//    private suspend fun PipelineContext<Unit, ApplicationCall>.handleCall(packet: Packet): Packet {
+//        return when (packet) {
+//            is Packet.Call -> {
+////                val lastId = lastId.value
+////                when {
+////                    lastId == 0 -> {
+////                        this@Yasdpl.lastId.value = packet.call.id
+////                    }
+////
+////                    packet.call.id < MAX_ID_DIFFERENCE -> {
+////                        this@Yasdpl.lastId.value = packet.call.id
+////                    }
+////
+////                    packet.call.id > lastId && packet.call.id - lastId < MAX_ID_DIFFERENCE -> {
+////                        this@Yasdpl.lastId.value = packet.call.id
+////                    }
+////
+////                    packet.call.id < lastId && lastId - packet.call.id < MAX_ID_DIFFERENCE -> {
+////
+////                    }
+////
+////                    else -> {
+////                        println("Got USDPL call with strange ID! got:${packet.call.id} last id:${lastId} (in release mode this packet will be rejected)")
+////                    }
+////                }
+//                val result = services(packet.call.function, packet.call.parameters, this)
+//                if (result.isSuccess) {
+//                    return Packet.CallResponse(
+//                        RemoteCallResponse(
+//                            response = result.getOrThrow()
+//                        )
+//                    )
+//                } else {
+//                    return Packet.Invalid
 //                }
-                val result = services(packet.call.function, packet.call.parameters, this)
-                if (result.isSuccess) {
-                    return Packet.CallResponse(
-                        RemoteCallResponse(
-                            response = result.getOrThrow()
-                        )
-                    )
-                } else {
-                    return Packet.Invalid
-                }
-            }
-
-            is Packet.Many -> {
-                val result = arrayListOf<Packet>()
-                for (child in packet.children) {
-                    result.add(handleCall(child))
-                }
-                return Packet.Many(result)
-            }
-
-//            is Packet.Cors -> {
-//
-//                return Packet.Invalid
 //            }
+//
+//            is Packet.Many -> {
+//                val result = arrayListOf<Packet>()
+//                for (child in packet.children) {
+//                    result.add(handleCall(child))
+//                }
+//                return Packet.Many(result)
+//            }
+//
+////            is Packet.Cors -> {
+////
+////                return Packet.Invalid
+////            }
+//
+//            else -> Packet.Invalid
+//        }
+//    }
 
-            else -> Packet.Invalid
+    private fun ServiceRegistry.initServicesInternal()
+    {
+        initServices()
+        register("bind") {
+            val binds = buildList {
+                initBindsInternal()
+            }
+            for (bind in binds) {
+                method(bind)
+                {
+                    var result = Result.success(Unit)
+                    while (!closed) {
+                        val (method, callback) = bindingQueue.getOrPut(bind) { Channel() }.receive()
+                        sendSerialized(BindingCall(method))
+                        val ret = callback()
+                        if (ret.isFailure) {
+                            result = ret
+                            break
+                        }
+                    }
+                    return@method result
+                }
+            }
+        }
+        register("test")
+        {
+            method("test")
+            {
+                val message = incoming.receive() as? Frame.Text
+                message?.readText()?.let { info(it) }
+                return@method Result.success(Unit)
+            }
         }
     }
 
-    operator fun set(function: String, service: ServerService) {
-        services[function] = service
+    private fun MutableList<String>.initBindsInternal()
+    {
+        add("log")
+        initBinds()
     }
 
-    @Deprecated(
-        "Use the operators, the old functions are only still here for backwards compatibility",
-        ReplaceWith("operator fun set(function: String, service: ServerService)")
-    )
-    fun register(function: String, service: ServerService) {
-        this[function] = service
+    abstract fun ServiceRegistry.initServices()
+
+    abstract fun MutableList<String>.initBinds()
+
+    fun bind(service: String, method: String, callback: suspend DefaultWebSocketServerSession.() -> Result<Unit>) {
+        runBlocking {
+            bindingQueue.getOrPut(service) { Channel() }.send(QueueEntry(method, callback))
+        }
+    }
+
+    operator fun set(descriptor: String, service: ServerService) {
+        services[descriptor] = service
+    }
+
+    fun register(descriptor: String, service: Service.Companion.ServiceBuilder<DefaultWebSocketServerSession>.() -> Unit) {
+        this[descriptor] = Service.builder(service)
     }
 
     suspend operator fun invoke(): Result<Unit> = coroutineScope {
-        launch {
+        val thread = launch {
             engine.start(true)
-        }.join()
+        }
+        thread.invokeOnCompletion {
+            closed = true
+        }
+        info("Backend Started")
+        thread.join()
         return@coroutineScope Result.success(Unit)
     }
 
-    @Deprecated(
-        "Use the operators, the old functions are only still here for backwards compatibility",
-        ReplaceWith("suspend operator fun invoke()")
-    )
-    suspend fun run(): Result<Unit> = coroutineScope {
-        invoke()
+    fun info(message: String) {
+        logger.info { message }
+        bind("log", "info") {
+            send(message)
+            Result.success(Unit)
+        }
     }
 
-    companion object {
-        const val MAX_ID_DIFFERENCE = 32
+    fun debug(message: String) {
+        logger.debug { message }
+        bind("log", "debug") {
+            send(message)
+            Result.success(Unit)
+        }
     }
 
+    fun error(message: String, exception: Throwable) {
+        logger.error(exception) { message }
+        bind("log", "error") {
+            send(message)
+            Result.success(Unit)
+        }
+    }
+
+    fun warn(message: String) {
+        logger.warn { message }
+        bind("log", "warn") {
+            send(message)
+            Result.success(Unit)
+        }
+    }
 }
+
+data class QueueEntry(val method: String, val handler: suspend DefaultWebSocketServerSession.() -> Result<Unit>)
+
+
 
