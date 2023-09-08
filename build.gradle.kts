@@ -98,8 +98,15 @@ publishing {
 		maven {
 			mavenLocal()
 			url = uri(layout.buildDirectory.dir("repo"))
-
 		}
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/EmuDeck/yasdpl-kt")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
+            }
+        }
 	}
 }
 
