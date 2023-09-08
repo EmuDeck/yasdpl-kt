@@ -93,26 +93,39 @@ kotlin {
     }
 }
 
+val secrets = Properties().apply {
+    load(FileInputStream(File(rootProject.rootDir, "secrets.properties")))
+}
+
 publishing {
 	repositories {
 		maven {
 			mavenLocal()
 			url = uri(layout.buildDirectory.dir("repo"))
 		}
+//        maven {
+//            name = "GitHubPackages"
+//            url = uri("https://maven.pkg.github.com/EmuDeck/yasdpl-kt")
+//            credentials {
+//                username = System.getenv("GITHUB_ACTOR")
+//                password = System.getenv("GITHUB_TOKEN")
+//            }
+//        }
         maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/EmuDeck/yasdpl-kt")
-            credentials {
-                username = System.getenv("GITHUB_ACTOR")
-                password = System.getenv("GITHUB_TOKEN")
+            name = "Forgejo"
+            url = uri("https://codeberg.org/api/packages/Witherking25/maven")
+
+            credentials(HttpHeaderCredentials::class) {
+                name = "Authorization"
+                value = "token ${secrets["FORGEJO_TOKEN"]}"
+            }
+
+            authentication {
+                create<HttpHeaderAuthentication>("header")
             }
         }
 	}
 }
-
-//val secrets = Properties().apply {
-//    load(FileInputStream(File(rootProject.rootDir, "secrets.properties")))
-//}
 //
 //npmPublish {
 //    registries {
