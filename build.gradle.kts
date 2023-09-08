@@ -9,7 +9,7 @@ plugins {
 
 }
 
-group = "com.withertech.yasdpl"
+group = "com.emudeck.yasdpl"
 version = "2.0.0"
 
 repositories {
