@@ -5,7 +5,7 @@ plugins {
     kotlin("multiplatform") version "1.9.0"
 	kotlin("plugin.serialization") version "1.9.0"
 	id("maven-publish")
-    id("dev.petuska.npm.publish") version "3.4.1"
+//    id("dev.petuska.npm.publish") version "3.4.1"
 
 }
 
@@ -103,15 +103,15 @@ publishing {
 	}
 }
 
-val secrets = Properties().apply {
-    load(FileInputStream(File(rootProject.rootDir, "secrets.properties")))
-}
-
-npmPublish {
-    registries {
-        register("npmjs") {
-            uri.set("https://registry.npmjs.org")
-            authToken.set(secrets.getProperty("NPM_TOKEN"))
-        }
-    }
-}
+//val secrets = Properties().apply {
+//    load(FileInputStream(File(rootProject.rootDir, "secrets.properties")))
+//}
+//
+//npmPublish {
+//    registries {
+//        register("npmjs") {
+//            uri.set("https://registry.npmjs.org")
+//            authToken.set(secrets.getProperty("NPM_TOKEN"))
+//        }
+//    }
+//}
