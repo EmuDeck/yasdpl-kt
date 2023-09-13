@@ -9,7 +9,7 @@ plugins {
 
 }
 
-group = "com.emudeck.yasdpl"
+group = "io.github.emudeck.yasdpl"
 version = "2.0.0"
 
 repositories {
@@ -50,15 +50,16 @@ kotlin {
         }
     }
     sourceSets {
-		val ktor_version = "2.3.2"
+        val okioVersion = "3.4.0"
+        val ktorVersion = "2.3.2"
 	    val commonMain by getting {
 			dependencies {
-                implementation("io.ktor:ktor-client-core:$ktor_version")
-                implementation("io.ktor:ktor-client-content-negotiation:$ktor_version")
+                api("io.ktor:ktor-client-core:$ktorVersion")
+                api("io.ktor:ktor-client-content-negotiation:$ktorVersion")
 
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
-				implementation("io.ktor:ktor-serialization-kotlinx-json:$ktor_version")
-                implementation("io.github.oshai:kotlin-logging:5.1.0")
+                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
+				api("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
+                api("io.github.oshai:kotlin-logging:5.1.0")
             }
 	    }
 	    val commonTest by getting {
@@ -71,9 +72,9 @@ kotlin {
 			    implementation("org.jetbrains.kotlin-wrappers:kotlin-react:18.2.0-pre.346")
 			    implementation("org.jetbrains.kotlin-wrappers:kotlin-react-dom:18.2.0-pre.346")
 			    implementation("org.jetbrains.kotlin-wrappers:kotlin-emotion:11.9.3-pre.346")
-                implementation("io.ktor:ktor-client-websockets:$ktor_version")
-                implementation("io.ktor:ktor-client-js:$ktor_version")
-                implementation(npm("decky-frontend-lib", "^3.21.0"))
+                api("io.ktor:ktor-client-websockets:$ktorVersion")
+                api("io.ktor:ktor-client-js:$ktorVersion")
+//                implementation(npm("decky-frontend-lib", "^3.21.0"))
 
             }
 	    }
@@ -81,12 +82,13 @@ kotlin {
 	    val backendMain by getting {
 			dependencies {
 //                implementation(kotlin("stdlib-common"))
-				implementation("io.ktor:ktor-server-core:$ktor_version")
-				implementation("io.ktor:ktor-server-websockets:$ktor_version")
-				implementation("io.ktor:ktor-server-cio:$ktor_version")
-				implementation("io.ktor:ktor-server-content-negotiation:$ktor_version")
-                implementation("io.ktor:ktor-client-cio:$ktor_version")
-                implementation("io.ktor:ktor-server-cors:$ktor_version")
+				implementation("io.ktor:ktor-server-core:$ktorVersion")
+				implementation("io.ktor:ktor-server-websockets:$ktorVersion")
+				implementation("io.ktor:ktor-server-cio:$ktorVersion")
+				implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
+                implementation("io.ktor:ktor-client-cio:$ktorVersion")
+                implementation("io.ktor:ktor-server-cors:$ktorVersion")
+                implementation("com.squareup.okio:okio:$okioVersion")
             }
 	    }
 	    val backendTest by getting

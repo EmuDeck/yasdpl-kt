@@ -11,6 +11,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.promise
 import kotlinx.js.Void
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.js.Promise
 
@@ -25,68 +26,89 @@ external interface Console {
 
 external val console: Console
 
-@Suppress("NON_EXPORTABLE_TYPE")
 @DelicateCoroutinesApi
 @ExperimentalJsExport
 @JsExport
 abstract class WebsocketClient(private val port: Short = 31338) {
     private val registry = HandlerRegistry().apply { initServicesInternal() }
+    private val showDebug: Boolean = js("process.env.RELEASE_TYPE === 'development'") as Boolean
+
+    lateinit var env: Env
 
     init {
         GlobalScope.promise {
+            send("env", "get")
+            {
+                this@WebsocketClient.env = receiveDeserialized<Env>()
+                return@send Result.success(Unit)
+            }
             registry(port)
         }
+
     }
 
     @JsExport.Ignore
     abstract fun HandlerRegistry.initServices()
 
-    private fun HandlerRegistry.initServicesInternal()
-    {
+    private fun HandlerRegistry.initServicesInternal() {
         register("log")
         {
             method("info")
             {
+                val pluginName = incoming.receive() as? Frame.Text
+                val loggerName = incoming.receive() as? Frame.Text
                 val message = incoming.receive() as? Frame.Text
                 console.info(
-                    "%c MetaDeck %c Backend %c",
+                    "%c $pluginName Backend %c $loggerName %c",
                     "background: #16a085; color: black;",
                     "background: #1abc9c; color: black;",
                     "background: transparent;",
-                    message?.readText())
+                    message?.readText()
+                )
                 Result.success(Unit)
             }
             method("debug")
             {
+                val pluginName = incoming.receive() as? Frame.Text
+                val loggerName = incoming.receive() as? Frame.Text
                 val message = incoming.receive() as? Frame.Text
-                console.debug(
-                    "%c MetaDeck %c Backend %c",
-                    "background: #16a085; color: black;",
-                    "background: #1abc9c; color: black;",
-                    "color: blue;",
-                    message?.readText())
+                if (showDebug) {
+                    console.debug(
+                        "%c $pluginName Backend %c $loggerName %c",
+                        "background: #16a085; color: black;",
+                        "background: #1abc9c; color: black;",
+                        "color: blue;",
+                        message?.readText()
+                    )
+                }
                 Result.success(Unit)
             }
             method("error")
             {
+                val pluginName = incoming.receive() as? Frame.Text
+                val loggerName = incoming.receive() as? Frame.Text
                 val message = incoming.receive() as? Frame.Text
                 console.error(
-                    "%c MetaDeck %c Backend %c",
+                    "%c $pluginName Backend %c $loggerName %c",
                     "background: #16a085; color: black;",
                     "background: #FF0000;",
                     "background: transparent;",
-                    message?.readText())
+                    message?.readText()
+                )
                 Result.success(Unit)
             }
             method("warn")
             {
+                val pluginName = incoming.receive() as? Frame.Text
+                val loggerName = incoming.receive() as? Frame.Text
                 val message = incoming.receive() as? Frame.Text
                 console.warn(
-                    "%c MetaDeck %c Backend %c",
+                    "%c $pluginName Backend %c $loggerName %c",
                     "background: #16a085; color: black;",
                     "background: #c4a000;",
                     "background: transparent;",
-                    message?.readText())
+                    message?.readText()
+                )
                 Result.success(Unit)
             }
         }
@@ -94,8 +116,11 @@ abstract class WebsocketClient(private val port: Short = 31338) {
     }
 
     @JsExport.Ignore
-    protected fun send(descriptor: String, method: String, callback: suspend DefaultClientWebSocketSession.() -> Result<Unit>): Promise<Unit>
-    {
+    fun send(
+        descriptor: String,
+        method: String,
+        callback: suspend DefaultClientWebSocketSession.() -> Result<Unit>
+    ): Promise<Unit> {
         return GlobalScope.promise {
             val client = HttpClient {
                 install(ContentNegotiation)
@@ -120,15 +145,76 @@ abstract class WebsocketClient(private val port: Short = 31338) {
         }
     }
 
-    fun test(): Promise<Unit> = send("test", "test")
-    {
-        send("test")
-        Result.success(Unit)
+    fun close() {
+        registry.close()
+    }
+}
+
+@DelicateCoroutinesApi
+@ExperimentalJsExport
+@JsExport
+class Logger(private val backendAPI: WebsocketClient, private val loggerName: String) {
+    private val showDebug: Boolean = js("process.env.RELEASE_TYPE === 'development'") as Boolean
+    fun info(vararg args: Any?) {
+        backendAPI.send("log", "info") {
+            send(loggerName)
+            send(Json.encodeToString(args))
+            return@send Result.success(Unit)
+        }
+        console.info(
+            "%c ${backendAPI.env.pluginName} Backend %c $loggerName %c",
+            "background: #16a085; color: black;",
+            "background: #1abc9c; color: black;",
+            "background: transparent;",
+            *args
+        )
     }
 
-    fun close()
-    {
-        registry.close()
+    fun debug(vararg args: Any?) {
+        if (showDebug) {
+            backendAPI.send("log", "debug") {
+                send(loggerName)
+                send(Json.encodeToString(args))
+                return@send Result.success(Unit)
+            }
+            console.debug(
+                "%c ${backendAPI.env.pluginName} Backend %c $loggerName %c",
+                "background: #16a085; color: black;",
+                "background: #1abc9c; color: black;",
+                "color: blue;",
+                *args
+            )
+        }
+    }
+
+    fun error(vararg args: Any?) {
+        backendAPI.send("log", "error") {
+            send(loggerName)
+            send(Json.encodeToString(args))
+            return@send Result.success(Unit)
+        }
+        console.error(
+            "%c ${backendAPI.env.pluginName} Backend %c $loggerName %c",
+            "background: #16a085; color: black;",
+            "background: #FF0000;",
+            "background: transparent;",
+            *args
+        )
+    }
+
+    fun warn(vararg args: Any?) {
+        backendAPI.send("log", "warn") {
+            send(loggerName)
+            send(Json.encodeToString(args))
+            return@send Result.success(Unit)
+        }
+        console.warn(
+            "%c ${backendAPI.env.pluginName} Backend %c $loggerName %c",
+            "background: #16a085; color: black;",
+            "background: #c4a000;",
+            "background: transparent;",
+            *args
+        )
     }
 }
 

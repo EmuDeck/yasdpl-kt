@@ -1,6 +1,8 @@
 package yasdpl
 
+import io.github.oshai.kotlinlogging.ConsoleOutputAppender
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.*
 import io.ktor.serialization.kotlinx.json.*
@@ -9,11 +11,8 @@ import io.ktor.server.cio.*
 import io.ktor.server.engine.*
 import io.ktor.server.plugins.cors.*
 import io.ktor.server.plugins.cors.routing.CORS
-import io.ktor.server.request.*
-import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
-import io.ktor.util.pipeline.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -62,7 +61,10 @@ val HttpHeaders.allHeaders
     )
 
 abstract class WebsocketServer(port: Short = 31338) {
-    private val logger = KotlinLogging.logger("Backend")
+    private val logger = KotlinLogging.logger("Backend").apply {
+        KotlinLoggingConfiguration.appender = MultiAppender(listOf(ConsoleOutputAppender, FileAppender, WebsocketAppender(this@WebsocketServer)))
+        KotlinLoggingConfiguration.formatter = BackendFormatter
+    }
 
     private var closed = false
 
@@ -185,12 +187,58 @@ abstract class WebsocketServer(port: Short = 31338) {
                 }
             }
         }
-        register("test")
-        {
-            method("test")
-            {
-                val message = incoming.receive() as? Frame.Text
-                message?.readText()?.let { info(it) }
+        register("log") {
+            method("info") {
+                val name = incoming.receive() as? Frame.Text
+                val args = Json.decodeFromString<Array<out Any?>>((incoming.receive() as? Frame.Text)?.readText() ?: "[]")
+                val message = args.foldIndexed("") { i: Int, s: String, any: Any? ->
+                    s + any.toString() + if (i < args.size - 1) ", " else ""
+                }
+                if (name!= null) {
+                    KotlinLogging.logger(name.readText()).info { message }
+                }
+                return@method Result.success(Unit)
+            }
+
+            method("debug") {
+                val name = incoming.receive() as? Frame.Text
+                val args = Json.decodeFromString<Array<out Any?>>((incoming.receive() as? Frame.Text)?.readText() ?: "[]")
+                val message = args.foldIndexed("") { i: Int, s: String, any: Any? ->
+                    s + any.toString() + if (i < args.size - 1) ", " else ""
+                }
+                if (name!= null) {
+                    KotlinLogging.logger(name.readText()).debug { message }
+                }
+                return@method Result.success(Unit)
+            }
+
+            method("error") {
+                val name = incoming.receive() as? Frame.Text
+                val args = Json.decodeFromString<Array<out Any?>>((incoming.receive() as? Frame.Text)?.readText() ?: "[]")
+                val message = args.foldIndexed("") { i: Int, s: String, any: Any? ->
+                    s + any.toString() + if (i < args.size - 1) ", " else ""
+                }
+                if (name!= null) {
+                    KotlinLogging.logger(name.readText()).error { message }
+                }
+                return@method Result.success(Unit)
+            }
+
+            method("warn") {
+                val name = incoming.receive() as? Frame.Text
+                val args = Json.decodeFromString<Array<out Any?>>((incoming.receive() as? Frame.Text)?.readText() ?: "[]")
+                val message = args.foldIndexed("") { i: Int, s: String, any: Any? ->
+                    s + any.toString() + if (i < args.size - 1) ", " else ""
+                }
+                if (name!= null) {
+                    KotlinLogging.logger(name.readText()).warn { message }
+                }
+                return@method Result.success(Unit)
+            }
+        }
+        register("env") {
+            method("get") {
+                sendSerialized<Env>(DeckyEnv)
                 return@method Result.success(Unit)
             }
         }
@@ -217,7 +265,7 @@ abstract class WebsocketServer(port: Short = 31338) {
     }
 
     fun register(descriptor: String, service: Service.Companion.ServiceBuilder<DefaultWebSocketServerSession>.() -> Unit) {
-        this[descriptor] = Service.builder(service)
+        services.register(descriptor, service)
     }
 
     suspend operator fun invoke(): Result<Unit> = coroutineScope {
@@ -227,42 +275,42 @@ abstract class WebsocketServer(port: Short = 31338) {
         thread.invokeOnCompletion {
             closed = true
         }
-        info("Backend Started")
+        logger.info { "Backend Started" }
         thread.join()
         return@coroutineScope Result.success(Unit)
     }
 
-    fun info(message: String) {
-        logger.info { message }
-        bind("log", "info") {
-            send(message)
-            Result.success(Unit)
-        }
-    }
-
-    fun debug(message: String) {
-        logger.debug { message }
-        bind("log", "debug") {
-            send(message)
-            Result.success(Unit)
-        }
-    }
-
-    fun error(message: String, exception: Throwable) {
-        logger.error(exception) { message }
-        bind("log", "error") {
-            send(message)
-            Result.success(Unit)
-        }
-    }
-
-    fun warn(message: String) {
-        logger.warn { message }
-        bind("log", "warn") {
-            send(message)
-            Result.success(Unit)
-        }
-    }
+//    fun info(message: String) {
+//        logger.info { message }
+//        bind("log", "info") {
+//            send(message)
+//            Result.success(Unit)
+//        }
+//    }
+//
+//    fun debug(message: String) {
+//        logger.debug { message }
+//        bind("log", "debug") {
+//            send(message)
+//            Result.success(Unit)
+//        }
+//    }
+//
+//    fun error(message: String, exception: Throwable) {
+//        logger.error(exception) { message }
+//        bind("log", "error") {
+//            send(message)
+//            Result.success(Unit)
+//        }
+//    }
+//
+//    fun warn(message: String) {
+//        logger.warn { message }
+//        bind("log", "warn") {
+//            send(message)
+//            Result.success(Unit)
+//        }
+//    }
 }
 
 data class QueueEntry(val method: String, val handler: suspend DefaultWebSocketServerSession.() -> Result<Unit>)
